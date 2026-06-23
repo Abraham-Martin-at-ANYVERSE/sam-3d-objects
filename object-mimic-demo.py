@@ -418,10 +418,10 @@ def render_single_frame(
   # render_frames returns a list/tensor of (H, W, 3) uint8
   if isinstance(frames, (list, tuple)):
     frame = frames[0]
-  else:
-    frame = frames[0]
   if isinstance(frame, torch.Tensor):
     frame = frame.cpu().numpy()
+  elif isinstance(frame, dict) and "color" in frame:
+    frame = frame["color"].cpu().numpy()
   return frame.astype(np.uint8)
 
 
