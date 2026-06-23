@@ -415,15 +415,13 @@ def render_single_frame(
     [intr],
     {"resolution": resolution, "bg_color": (0, 0, 0), "backend": "gsplat"},
   )
-  # render_frames returns a list/tensor of (H, W, 3) uint8
-  if isinstance(frames, (list, tuple)):
-    frame = frames[0]
-  if isinstance(frame, torch.Tensor):
-    frame = frame.cpu().numpy()
-  elif isinstance(frame, dict) and "color" in frame:
-    frame = frame["color"].cpu().numpy()
-  return frame.astype(np.uint8)
-
+  # render_frames returns a dict with keys "color" and "depth"; we want the color image
+  assert isinstance(frames, dict), f"Expected render_frames to return a dict, got {type(frames)}"
+  assert "color" in frames, f"Expected 'color' key in render_frames output, got keys: {list(frames.keys())}"
+  assert isinstance(frames["color"], list), f"Expected 'color' to be a list, got {type(frames['color'])}"
+  assert len(frames["color"]) >= 1, f"Expected at least one frame in 'color', got {len(frames['color'])}"
+  assert isinstance(frames["color"][0], np.ndarray), f"Expected 'color'[0] to be a numpy array, got {type(frames['color'][0])}"
+  return frames["color"][0]
 
 def write_video(
   frames: list[np.ndarray],
