@@ -509,11 +509,9 @@ def main() -> None:
       trans = trans.squeeze(0)
     translation = trans.cpu().float().tolist()
 
-    # rotation: quaternion tensor (wxyz) of various shapes
-    rot_q = output["rotation"]
-    rot_q = rot_q.reshape(-1)[:4].cpu().float()
-    R = quaternion_wxyz_to_rotation_matrix(rot_q)
-    rotation_6d = rotation_matrix_to_6d(R)
+    # rotation: already in 6D normalized form
+    rot_6d = output["6drotation_normalized"]
+    rotation_6d = rot_6d.reshape(-1)[:6].cpu().float().tolist()
 
     # scale: tensor of shape (3,) or (1, 3)
     sc = output["scale"]
