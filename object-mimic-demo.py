@@ -388,6 +388,65 @@ def rotation_matrix_to_6d(R: torch.Tensor) -> list[float]:
     return r1 + r2
 
 
+def postprocess_rotation_6d_continuity(
+    frames: list[dict],
+    jump_threshold: float = 0.8,
+) -> int:
+    """
+    Reduce temporal sign-flip jumps in per-frame 6D rotations.
+
+    SAM 3D can produce equivalent-yet-discontinuous pose estimates for
+    symmetric objects (e.g. sudden sign inversions). For each frame we test
+    a small set of axis-sign candidates and pick the one closest to the
+    previous corrected frame.
+
+    Returns:
+        Number of frames whose 6D rotation was adjusted.
+    """
+    if len(frames) < 2:
+        return 0
+
+    def _as_np(rot: list[float]) -> np.ndarray:
+        arr = np.asarray(rot, dtype=np.float32).reshape(-1)
+        if arr.size != 6:
+            raise ValueError(
+                f"rotation_6d must contain 6 values, got {arr.size}."
+            )
+        return arr
+
+    fixed = 0
+    prev = _as_np(frames[0]["rotation_6d"])
+
+    for i in range(1, len(frames)):
+        curr = _as_np(frames[i]["rotation_6d"])
+
+        # Keep axis-level sign consistency (XYZ of r1, XYZ of r2).
+        candidates = [
+            curr,
+            np.concatenate([-curr[:3], curr[3:]]),
+            np.concatenate([curr[:3], -curr[3:]]),
+            -curr,
+        ]
+
+        base_dist = float(np.linalg.norm(candidates[0] - prev))
+        dists = [float(np.linalg.norm(c - prev)) for c in candidates]
+        best_idx = int(np.argmin(dists))
+        best = candidates[best_idx]
+        best_dist = dists[best_idx]
+
+        has_large_jump = bool(np.any(np.abs(curr - prev) > jump_threshold))
+        improved = best_dist + 1e-7 < base_dist
+
+        if best_idx != 0 and has_large_jump and improved:
+            frames[i]["rotation_6d"] = best.astype(float).tolist()
+            prev = best
+            fixed += 1
+        else:
+            prev = curr
+
+    return fixed
+
+
 # ---------------------------------------------------------------------------
 # Fixed-camera rendering helper
 # ---------------------------------------------------------------------------
@@ -548,6 +607,13 @@ def main() -> None:
             rendered_frames.append(rendered)
 
     # --- write JSON ---
+    fixed_count = postprocess_rotation_6d_continuity(json_frames)
+    if fixed_count > 0:
+        print(
+            f"Applied rotation continuity post-process to {fixed_count} "
+            "frames."
+        )
+
     motion_json = {
         "video_info": {
             "source": str(args.video),
